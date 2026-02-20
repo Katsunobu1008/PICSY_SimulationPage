@@ -1,7 +1,11 @@
+import os
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("PICSY_Absolute_Knowledge_Base")
 
+# --------------------------------------------------------
+# リソース1: 数理モデル (Math)
+# --------------------------------------------------------
 @mcp.resource("picsy://math")
 def get_picsy_math() -> str:
     """
@@ -75,6 +79,9 @@ FOR i in 0 to N-1:
     P[i] = P[i] + (V * ratio)
     """
 
+# --------------------------------------------------------
+# リソース2: 実装要件 (Requirements)
+# --------------------------------------------------------
 @mcp.resource("picsy://requirements")
 def get_picsy_requirements() -> str:
     """
@@ -126,6 +133,26 @@ def get_picsy_requirements() -> str:
   1. Target member's current P and C.
   2. List of incoming evaluations. (Iterate through `matrix[target_id][j]` where j != target_id, display Sender Name and Value).
 """
+
+# --------------------------------------------------------
+# リソース3: 理論・概念モデル (Theory) - 動的ファイル読み込み
+# --------------------------------------------------------
+@mcp.resource("picsy://theory")
+def get_picsy_theory() -> str:
+    """
+    [AI向け厳密定義] PICSYのモデルに関する追加ドキュメント（外部ファイル読み込み）
+    同階層にある「PICSY のモデル.md」の内容を動的に読み込みます。
+    """
+    # このPythonファイルと同じディレクトリのパスを取得
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 「PICSY のモデル.md」の絶対パスを構築
+    file_path = os.path.join(current_dir, "PICSY のモデル.md")
+    
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"システムエラー: 'PICSY のモデル.md' が見つからないか読み込めません。詳細: {e}"
 
 if __name__ == "__main__":
     mcp.run()
