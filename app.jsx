@@ -1,20 +1,27 @@
 const { useState, useEffect } = React;
 
 const App = () => {
+    // ID counter to generate unique IDs
+    const [nextId, setNextId] = useState(4);
+
+    // Initial State (田中, 徳永, 藤井, 山本)
     const [members, setMembers] = useState([
-        { id: 0, name: "Alice", P: 1.0, C: 1.0 },
-        { id: 1, name: "Bob", P: 1.0, C: 1.0 },
-        { id: 2, name: "Charlie", P: 1.0, C: 1.0 },
+        { id: 0, name: "田中", P: 1.0, C: 1.0 },
+        { id: 1, name: "徳永", P: 1.0, C: 1.0 },
+        { id: 2, name: "藤井", P: 1.0, C: 1.0 },
+        { id: 3, name: "山本", P: 1.0, C: 1.0 },
     ]);
 
     const [matrix, setMatrix] = useState([
-        [1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0],
     ]);
 
     const [newMemberName, setNewMemberName] = useState("");
     const [focusMemberId, setFocusMemberId] = useState(0);
+    const [removeMemberId, setRemoveMemberId] = useState(0);
 
     const [txSenderId, setTxSenderId] = useState(0);
     const [txReceiverId, setTxReceiverId] = useState(1);
@@ -22,22 +29,57 @@ const App = () => {
 
     const [recoveryRate, setRecoveryRate] = useState(0.05);
 
+    // Initial state setup for select boxes when members change
+    useEffect(() => {
+        if (members.length > 0) {
+            if (!members.find(m => m.id === parseInt(txSenderId))) setTxSenderId(members[0].id);
+            if (!members.find(m => m.id === parseInt(txReceiverId))) setTxReceiverId(members[members.length > 1 ? 1 : 0].id);
+            if (!members.find(m => m.id === parseInt(focusMemberId))) setFocusMemberId(members[0].id);
+            if (!members.find(m => m.id === parseInt(removeMemberId))) setRemoveMemberId(members[0].id);
+        }
+    }, [members]);
+
+
     const addMember = () => {
-        if (members.length >= 30 || !newMemberName.trim()) return;
-        const newId = members.length;
-        const newMember = { id: newId, name: newMemberName.trim(), P: 1.0, C: 1.0 };
+        if (members.length >= 30) return;
+
+        let name = newMemberName.trim();
+        if (!name) {
+            name = `メンバー ${nextId + 1}`;
+        }
+
+        const newMember = { id: nextId, name: name, P: 1.0, C: 1.0 };
 
         setMembers(prev => [...prev, newMember]);
         setMatrix(prev => {
             const nextMatrix = prev.map(row => [...row, 1.0]);
-            nextMatrix.push(new Array(newId + 1).fill(1.0));
+            nextMatrix.push(new Array(members.length + 1).fill(1.0));
             return nextMatrix;
         });
+        setNextId(prev => prev + 1);
         setNewMemberName("");
+    };
+
+    const removeMember = () => {
+        if (members.length <= 1) {
+            alert('メンバーは少なくとも1人必要です。');
+            return;
+        }
+        const rmId = parseInt(removeMemberId);
+        const rmIndex = members.findIndex(m => m.id === rmId);
+
+        if (rmIndex === -1) return;
+
+        setMembers(prev => prev.filter(m => m.id !== rmId));
+        setMatrix(prev => {
+            const nextMatrix = prev.filter((_, i) => i !== rmIndex); // remove row
+            return nextMatrix.map(row => row.filter((_, j) => j !== rmIndex)); // remove column
+        });
     };
 
     const recalculateC = () => {
         const N = members.length;
+        if (N === 0) return;
         let E = matrix;
 
         // Step 2.1
@@ -84,21 +126,27 @@ const App = () => {
         const s = parseInt(txSenderId);
         const r = parseInt(txReceiverId);
         const amt = parseFloat(txAmount);
+
+        const sIndex = members.findIndex(m => m.id === s);
+        const rIndex = members.findIndex(m => m.id === r);
+
+        if (sIndex === -1 || rIndex === -1) return;
+
         if (s === r) {
-            alert('SENDER and RECEIVER must be different.');
+            alert('送信者と受信者は異なる必要があります。');
             return;
         }
-        if (members[s].P < amt) {
-            alert('Insufficient purchasing power (P) for SENDER.');
+        if (members[sIndex].P < amt) {
+            alert('送信者の購買力 (P) が不足しています。');
             return;
         }
 
         const newMembers = [...members];
-        newMembers[s] = { ...newMembers[s], P: newMembers[s].P - amt };
-        newMembers[r] = { ...newMembers[r], P: newMembers[r].P + amt };
+        newMembers[sIndex] = { ...newMembers[sIndex], P: newMembers[sIndex].P - amt };
+        newMembers[rIndex] = { ...newMembers[rIndex], P: newMembers[rIndex].P + amt };
 
         const newMatrix = matrix.map(row => [...row]);
-        newMatrix[r][s] += amt;
+        newMatrix[rIndex][sIndex] += amt;
 
         setMembers(newMembers);
         setMatrix(newMatrix);
@@ -127,15 +175,16 @@ const App = () => {
     };
 
     const focusMember = members.find(m => m.id === parseInt(focusMemberId)) || members[0];
+    const focusMemberIndex = members.findIndex(m => m.id === (focusMember ? focusMember.id : -1));
 
     return (
         <div className="container mx-auto px-4 py-10 max-w-7xl">
             <header className="mb-12 text-center relative">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl"></div>
-                <h1 className="relative text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-indigo-400 mb-4 tracking-tight">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl"></div>
+                <h1 className="relative text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 mb-4 tracking-tight drop-shadow-sm">
                     PICSY Simulator
                 </h1>
-                <p className="block text-slate-400 text-xl font-light">Propagational Investment Currency System</p>
+                <p className="block text-slate-500 text-xl font-medium">伝播的投資通貨システム (Propagational Investment Currency System)</p>
             </header>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -144,37 +193,37 @@ const App = () => {
 
                     {/* Matrix Panel */}
                     <div className="glass-panel p-8">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-                            <h2 className="text-2xl font-bold flex items-center gap-3">
-                                <div className="w-1.5 h-8 bg-gradient-to-b from-blue-400 to-cyan-500 rounded-full"></div>
-                                Evaluation Matrix
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200/60 pb-6">
+                            <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-800">
+                                <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full"></div>
+                                評価行列 (Evaluation Matrix)
                             </h2>
-                            <button onClick={recalculateC} className="btn-primary px-6 py-2.5 rounded-xl font-semibold text-sm shadow-lg flex items-center gap-2">
+                            <button onClick={recalculateC} className="btn-primary px-6 py-2.5 rounded-xl font-semibold text-sm shadow-md flex items-center gap-2 text-white">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 貢献度(C)を再計算する
                             </button>
                         </div>
 
-                        <div className="overflow-x-auto rounded-xl border border-slate-700/50 bg-slate-900/60 shadow-inner">
+                        <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white/60 shadow-sm">
                             <table className="w-full text-sm text-left">
-                                <thead className="text-xs text-slate-400 uppercase bg-slate-800/80 border-b border-slate-700/80">
+                                <thead className="text-xs text-slate-500 uppercase bg-slate-100/80 border-b border-slate-200/80">
                                     <tr>
-                                        <th className="px-5 py-4 font-semibold">Node</th>
-                                        <th className="px-5 py-4 font-semibold text-green-400">P (Power)</th>
-                                        <th className="px-5 py-4 font-semibold text-indigo-400">C (Contrib)</th>
+                                        <th className="px-5 py-4 font-bold text-slate-700">メンバー</th>
+                                        <th className="px-5 py-4 font-bold text-emerald-600">購買力 (P)</th>
+                                        <th className="px-5 py-4 font-bold text-indigo-600">貢献度 (C)</th>
                                         {members.map(m => (
-                                            <th key={m.id} className="px-5 py-4 text-center font-medium opacity-70" title={`Sender: ${m.name}`}>→ {m.name[0]}</th>
+                                            <th key={m.id} className="px-5 py-4 text-center font-bold text-slate-500" title={`送信者: ${m.name}`}>→ {m.name}</th>
                                         ))}
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800/50">
+                                <tbody className="divide-y divide-slate-100">
                                     {members.map((receiver, i) => (
-                                        <tr key={receiver.id} className="hover:bg-slate-800/40 transition-colors">
-                                            <td className="px-5 py-4 font-medium whitespace-nowrap">{receiver.name}</td>
-                                            <td className="px-5 py-4 text-green-400 font-mono tracking-tight">{receiver.P.toFixed(3)}</td>
-                                            <td className="px-5 py-4 text-indigo-400 font-mono tracking-tight">{receiver.C.toFixed(3)}</td>
+                                        <tr key={receiver.id} className="hover:bg-slate-50/80 transition-colors">
+                                            <td className="px-5 py-3 font-medium text-slate-800 whitespace-nowrap">{receiver.name}</td>
+                                            <td className="px-5 py-3 text-emerald-600 font-mono font-medium tracking-tight bg-emerald-50/30">{receiver.P.toFixed(3)}</td>
+                                            <td className="px-5 py-3 text-indigo-600 font-mono font-medium tracking-tight bg-indigo-50/30">{receiver.C.toFixed(3)}</td>
                                             {members.map((sender, j) => (
-                                                <td key={`${i}-${j}`} className={`px-5 py-4 text-center matrix-cell font-mono text-sm tracking-tight ${i === j ? 'bg-indigo-900/40 text-indigo-300' : 'text-slate-400'}`}>
+                                                <td key={`${i}-${j}`} className={`px-5 py-3 text-center matrix-cell font-mono text-sm tracking-tight ${i === j ? 'bg-indigo-100/50 text-indigo-800 font-medium' : 'text-slate-600'}`}>
                                                     {matrix[i][j].toFixed(3)}
                                                 </td>
                                             ))}
@@ -184,21 +233,55 @@ const App = () => {
                             </table>
                         </div>
 
-                        <div className="mt-8 flex flex-col sm:flex-row gap-4 items-center bg-slate-800/30 p-5 rounded-2xl border border-slate-700/50">
-                            <input
-                                type="text"
-                                placeholder="Add new member..."
-                                value={newMemberName}
-                                onChange={e => setNewMemberName(e.target.value)}
-                                className="w-full sm:flex-1 bg-slate-900/80 border border-slate-600 rounded-xl px-5 py-3 focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 focus:outline-none transition-all placeholder-slate-500"
-                            />
-                            <button
-                                onClick={addMember}
-                                disabled={members.length >= 30 || !newMemberName.trim()}
-                                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed px-8 py-3 rounded-xl font-semibold transition-all shadow-lg flex justify-center items-center gap-2"
-                            >
-                                ＋ メンバー追加
-                            </button>
+                        {/* Member Management Section */}
+                        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-200/60">
+                            {/* Add Member */}
+                            <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 shadow-sm">
+                                <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                                    メンバー追加
+                                </h3>
+                                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                                    <input
+                                        type="text"
+                                        placeholder="名前 (省略可)"
+                                        value={newMemberName}
+                                        onChange={e => setNewMemberName(e.target.value)}
+                                        className="w-full sm:flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 focus:outline-none transition-all placeholder-slate-400 text-slate-700"
+                                    />
+                                    <button
+                                        onClick={addMember}
+                                        disabled={members.length >= 30}
+                                        className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2.5 rounded-xl font-semibold text-white transition-all shadow-md flex justify-center items-center gap-2"
+                                    >
+                                        追加
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Remove Member */}
+                            <div className="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 shadow-sm">
+                                <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path></svg>
+                                    メンバー削除
+                                </h3>
+                                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                                    <select
+                                        value={removeMemberId}
+                                        onChange={e => setRemoveMemberId(e.target.value)}
+                                        className="w-full sm:flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 focus:outline-none appearance-none font-medium text-slate-700"
+                                    >
+                                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    </select>
+                                    <button
+                                        onClick={removeMember}
+                                        disabled={members.length <= 1}
+                                        className="w-full sm:w-auto bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-2.5 rounded-xl font-semibold transition-all shadow-sm flex justify-center items-center gap-2"
+                                    >
+                                        削除
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -209,51 +292,51 @@ const App = () => {
 
                     {/* Transaction Panel */}
                     <div className="glass-panel p-7">
-                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
-                            <div className="w-1.5 h-6 bg-gradient-to-b from-purple-400 to-pink-500 rounded-full"></div>
-                            Execute Transaction
+                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
+                            <div className="w-1.5 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full"></div>
+                            取引実行 (Transaction)
                         </h2>
 
                         <div className="space-y-5">
-                            <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
-                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Sender</label>
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                <label className="block text-xs font-bold text-slate-500 mb-2">送信者 (Sender)</label>
                                 <select
                                     value={txSenderId}
                                     onChange={e => setTxSenderId(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:outline-none appearance-none font-medium"
+                                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 focus:outline-none appearance-none font-medium text-slate-700"
                                 >
                                     {members.map(m => <option key={m.id} value={m.id}>{m.name} (P: {m.P.toFixed(2)})</option>)}
                                 </select>
                             </div>
                             <div className="flex justify-center -my-2 relative z-10">
-                                <div className="bg-slate-700 p-2 rounded-full shadow-lg border border-slate-600">
-                                    <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                                <div className="bg-white p-2 rounded-full shadow-md border border-slate-200">
+                                    <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
                                 </div>
                             </div>
-                            <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
-                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Receiver</label>
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                <label className="block text-xs font-bold text-slate-500 mb-2">受信者 (Receiver)</label>
                                 <select
                                     value={txReceiverId}
                                     onChange={e => setTxReceiverId(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-pink-500/50 focus:border-pink-500 focus:outline-none appearance-none font-medium"
+                                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-pink-500/30 focus:border-pink-500 focus:outline-none appearance-none font-medium text-slate-700"
                                 >
                                     {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
                             </div>
-                            <div className="px-2">
-                                <div className="flex justify-between text-sm font-medium mb-3">
-                                    <label className="text-slate-400">Amount (P)</label>
-                                    <span className="text-purple-400 font-mono bg-purple-500/10 px-2 py-0.5 rounded">{parseFloat(txAmount).toFixed(2)}</span>
+                            <div className="px-2 pt-2">
+                                <div className="flex justify-between text-sm font-bold mb-3">
+                                    <label className="text-slate-600">金額 (Amount)</label>
+                                    <span className="text-purple-600 font-mono bg-purple-100 px-2 py-0.5 rounded shadow-sm border border-purple-200">{parseFloat(txAmount).toFixed(2)} P</span>
                                 </div>
                                 <input
                                     type="range" min="0" max="2" step="0.01" value={txAmount}
                                     onChange={e => setTxAmount(e.target.value)}
-                                    className="w-full accent-purple-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full accent-purple-500 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                 />
                             </div>
                             <button
                                 onClick={executeTransaction}
-                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-purple-900/20 mt-4 active:scale-[0.98]"
+                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 py-3.5 rounded-xl font-bold text-white transition-all shadow-md mt-4 active:scale-[0.98]"
                             >
                                 評価を転送して取引する
                             </button>
@@ -262,71 +345,70 @@ const App = () => {
 
                     {/* Recovery Panel */}
                     <div className="glass-panel p-7">
-                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
-                            <div className="w-1.5 h-6 bg-gradient-to-b from-yellow-400 to-orange-500 rounded-full"></div>
-                            Recovery System
+                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
+                            <div className="w-1.5 h-6 bg-gradient-to-b from-yellow-500 to-orange-500 rounded-full"></div>
+                            自然回収 (Recovery)
                         </h2>
 
                         <div className="space-y-6">
                             <div className="px-2">
-                                <div className="flex justify-between text-sm font-medium mb-3">
-                                    <label className="text-slate-400">Rate (γ)</label>
-                                    <span className="text-yellow-400 font-mono bg-yellow-500/10 px-2 py-0.5 rounded">{parseFloat(recoveryRate).toFixed(2)}</span>
+                                <div className="flex justify-between text-sm font-bold mb-3">
+                                    <label className="text-slate-600">減価率 (γ)</label>
+                                    <span className="text-amber-600 font-mono bg-amber-100 px-2 py-0.5 rounded shadow-sm border border-amber-200">{parseFloat(recoveryRate).toFixed(2)}</span>
                                 </div>
                                 <input
                                     type="range" min="0" max="0.2" step="0.01" value={recoveryRate}
                                     onChange={e => setRecoveryRate(e.target.value)}
-                                    className="w-full accent-yellow-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full accent-amber-500 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                 />
                             </div>
                             <button
                                 onClick={executeRecovery}
-                                className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-yellow-500/50 py-3.5 rounded-xl font-bold text-yellow-500 hover:text-yellow-400 transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
+                                className="w-full bg-amber-500 hover:bg-amber-400 border border-amber-600 py-3.5 rounded-xl font-bold text-white transition-all shadow-md active:scale-[0.98] flex items-center justify-center gap-2"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                時間を進める（自然回収を実行）
+                                時間を進める（自然回収）
                             </button>
                         </div>
                     </div>
 
                     {/* Focus Panel */}
                     <div className="glass-panel p-7">
-                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
-                            <div className="w-1.5 h-6 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-full"></div>
-                            Member Detail View
+                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
+                            <div className="w-1.5 h-6 bg-gradient-to-b from-emerald-500 to-teal-500 rounded-full"></div>
+                            個別データ (Detail)
                         </h2>
 
-                        <div className="bg-slate-800/40 p-2 rounded-xl border border-slate-700/50 mb-5">
+                        <div className="bg-white p-2 rounded-xl border border-slate-200 mb-5 shadow-sm">
                             <select
-                                value={focusMemberId}
+                                value={focusMember ? focusMember.id : ""}
                                 onChange={e => setFocusMemberId(e.target.value)}
-                                className="w-full bg-transparent border-0 px-3 py-2 focus:ring-0 text-slate-200 font-medium appearance-none"
-                                style={{ outline: 'none' }}
+                                className="w-full bg-transparent border-0 px-3 py-2 font-bold text-slate-700 appearance-none focus:outline-none"
                             >
-                                {members.map(m => <option className="bg-slate-900" key={m.id} value={m.id}>Inspect: {m.name}</option>)}
+                                {members.map(m => <option key={m.id} value={m.id}>確認: {m.name}</option>)}
                             </select>
                         </div>
 
-                        {focusMember && (
-                            <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-700/50 shadow-inner">
+                        {focusMember && focusMemberIndex !== -1 && (
+                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-inner">
                                 <div className="flex justify-between items-center mb-3">
-                                    <span className="text-slate-400 text-sm font-medium uppercase tracking-wider">Power (P)</span>
-                                    <span className="text-green-400 font-mono font-bold text-lg">{focusMember.P.toFixed(3)}</span>
+                                    <span className="text-slate-500 text-sm font-bold">購買力 (P)</span>
+                                    <span className="text-emerald-600 font-mono font-bold text-lg bg-emerald-100 px-3 py-1 rounded-lg border border-emerald-200">{focusMember.P.toFixed(3)}</span>
                                 </div>
-                                <div className="flex justify-between items-center mb-5 pb-5 border-b border-slate-700/50">
-                                    <span className="text-slate-400 text-sm font-medium uppercase tracking-wider">Contribution (C)</span>
-                                    <span className="text-indigo-400 font-mono font-bold text-lg">{focusMember.C.toFixed(3)}</span>
+                                <div className="flex justify-between items-center mb-5 pb-5 border-b border-slate-200">
+                                    <span className="text-slate-500 text-sm font-bold">貢献度 (C)</span>
+                                    <span className="text-indigo-600 font-mono font-bold text-lg bg-indigo-100 px-3 py-1 rounded-lg border border-indigo-200">{focusMember.C.toFixed(3)}</span>
                                 </div>
 
-                                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Incoming Evaluations</h3>
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">他者からの評価 (Incoming)</h3>
                                 <ul className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                                    {members.map(sender => {
+                                    {members.map((sender, sIndex) => {
                                         if (sender.id === focusMember.id) return null;
-                                        const val = matrix[focusMember.id][sender.id];
+                                        const val = matrix[focusMemberIndex][sIndex];
                                         return (
-                                            <li key={sender.id} className="flex justify-between text-sm items-center bg-slate-800/80 rounded-lg px-4 py-2.5 border border-slate-700/30">
-                                                <span className="text-slate-300 font-medium">from {sender.name}</span>
-                                                <span className="text-cyan-400 font-mono bg-cyan-500/10 px-2 py-0.5 rounded">{val.toFixed(3)}</span>
+                                            <li key={sender.id} className="flex justify-between text-sm items-center bg-white rounded-lg px-4 py-2.5 border border-slate-200 shadow-sm">
+                                                <span className="text-slate-600 font-medium">{sender.name} から</span>
+                                                <span className="text-cyan-600 font-mono font-bold bg-cyan-100 px-2 py-0.5 rounded border border-cyan-200">{val.toFixed(3)}</span>
                                             </li>
                                         );
                                     })}
