@@ -24,7 +24,7 @@ const App = () => {
 
     // 【UI状態管理】各種入力・選択状態
     const [newMemberName, setNewMemberName] = useState("");      // 新規追加メンバーの名前入力値
-    const [focusMemberId, setFocusMemberId] = useState(0);       // インスペクター（個別詳細）パネルで表示中のメンバーID
+    const [focusMemberId, setFocusMemberId] = useState(0);       // 個人ログパネルで表示中のメンバーID
     const [removeMemberId, setRemoveMemberId] = useState(0);     // 削除プルダウンで選択されているメンバーID
 
     const [txSenderId, setTxSenderId] = useState(0);             // 取引の「送信者」ID
@@ -256,8 +256,8 @@ const App = () => {
             {/* ================= ヘッダーセクション ================= */}
             <header className="mb-10 text-center relative flex flex-col md:flex-row justify-between items-center border-b border-slate-200/60 pb-6 gap-4">
                 <div className="flex flex-col items-start">
-                    {/* タイトルのグラデーションとシャドウ */}
-                    <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-emerald-600 to-teal-500 tracking-tight drop-shadow-sm mb-1">
+                    {/* 信頼感のある深い青緑色の単色タイトル */}
+                    <h1 className="text-4xl font-extrabold text-teal-800 tracking-tight drop-shadow-sm mb-1">
                         PICSY Simulator
                     </h1>
                     <p className="text-slate-500 text-sm font-medium">伝播的投資貨幣PICSY (Propagational Investment Currency)</p>
@@ -275,8 +275,8 @@ const App = () => {
                     <button
                         onClick={() => setMultiplier(prev => prev === 1 ? 10000 : 1)}
                         className={`px-5 py-3 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-all ${multiplier === 10000
-                                ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white hover:opacity-90'
-                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                            ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white hover:opacity-90'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                             }`}
                     >
                         {/* トグルアイコン */}
@@ -393,8 +393,8 @@ const App = () => {
                                             {/* ここから右が「相手からの評価」数値セル */}
                                             {members.map((sender, j) => (
                                                 <td key={`${i}-${j}`} className={`px-3 py-2.5 text-center matrix-cell font-mono text-sm tracking-tight ${i === j
-                                                        ? 'bg-indigo-100/40 text-indigo-900 font-semibold' // 自分自身（対角要素）は特別に色付け
-                                                        : 'text-slate-600'
+                                                    ? 'bg-indigo-100/40 text-indigo-900 font-semibold' // 自分自身（対角要素）は特別に色付け
+                                                    : 'text-slate-600'
                                                     }`}>
                                                     {formatValue(matrix[i][j])}
                                                 </td>
@@ -424,10 +424,10 @@ const App = () => {
                                             <span className="text-slate-500 whitespace-nowrap shrink-0">[{log.time}]</span>
                                             {/* メッセージ内容（先頭の種別文字列で文字色を分岐表示） */}
                                             <span className={`${log.msg.startsWith('取引') ? 'text-emerald-400 font-bold' :
-                                                    log.msg.startsWith('計算') ? 'text-blue-300' :
-                                                        log.msg.startsWith('更新') ? 'text-amber-300' :
-                                                            log.msg.startsWith('退出') ? 'text-rose-400' :
-                                                                log.msg.startsWith('参加') ? 'text-fuchsia-300' : 'text-slate-300'
+                                                log.msg.startsWith('計算') ? 'text-blue-300' :
+                                                    log.msg.startsWith('更新') ? 'text-amber-300' :
+                                                        log.msg.startsWith('退出') ? 'text-rose-400' :
+                                                            log.msg.startsWith('参加') ? 'text-fuchsia-300' : 'text-slate-300'
                                                 }`}>{log.msg}</span>
                                         </div>
                                     ))
@@ -506,8 +506,8 @@ const App = () => {
 
                             <button
                                 onClick={executeTransaction}
-                                // [デザイン改善] このシミュレータ上で一番目立つ「主役カラー」を使用したプライマリーボタン
-                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 py-3.5 rounded-xl font-bold text-white transition-all shadow-md mt-2 active:scale-[0.98] border border-pink-700/50"
+                                // 信頼感と押下感を意識したソリッドなブルーの単色ボタン
+                                className="w-full bg-blue-600 hover:bg-blue-500 py-3.5 rounded-xl font-bold text-white transition-all shadow-md mt-2 active:scale-[0.98] border border-blue-700/50"
                             >
                                 評価を転送して取引を確定する
                             </button>
@@ -517,7 +517,7 @@ const App = () => {
                     {/* ====== 自然回収 (Recovery) パネル ====== */}
                     <div className="glass-panel p-7 shadow-lg border border-slate-200/60 bg-white/70">
                         <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
-                            <div className="w-1.5 h-6 bg-gradient-to-b from-orange-400 to-amber-500 rounded-full shadow-sm"></div>
+                            <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-sm"></div>
                             自然回収 (Recovery System)
                         </h2>
 
@@ -525,23 +525,22 @@ const App = () => {
                             <div className="px-2">
                                 <div className="flex justify-between text-sm font-bold mb-3">
                                     <label className="text-slate-600">減価率 (γ Rate)</label>
-                                    <span className="text-orange-700 font-mono bg-orange-100 px-3 py-1 rounded shadow-sm border border-orange-200">{parseFloat(recoveryRate).toFixed(2)}</span>
+                                    <span className="text-emerald-700 font-mono bg-emerald-100 px-3 py-1 rounded shadow-sm border border-emerald-200">{parseFloat(recoveryRate).toFixed(2)}</span>
                                 </div>
                                 <input
                                     type="range" min="0" max="0.2" step="0.01" value={recoveryRate}
                                     onChange={e => setRecoveryRate(e.target.value)}
-                                    className="w-full accent-orange-500 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                    className="w-full accent-emerald-500 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                 />
                             </div>
 
                             {/* [デザイン改善] 
-                                同一画面上において、強い色（マゼンタとオレンジなど）が競合すると認知ノイズとなり「おもちゃ感」が出ます。
-                                そのため、ここのボタンは色（オレンジ）を枠線とテキストでのみ示し、「2番目のアクション（Outlineスタイル）」へと変更しています。
-                                これにより、FinTechらしい洗練された全体のカラーバランスと視覚的調和を実現しました。
+                                同一画面上において、システム全体の色数を減らすためメンバー追加ボタンと同じエメラルド系（緑）に統一。
+                                中を白抜き（背景白、枠線と文字が緑）のスタイルを維持し、直感的に操作しやすいデザインへ。
                             */}
                             <button
                                 onClick={executeRecovery}
-                                className="w-full bg-white hover:bg-orange-50 py-3.5 rounded-xl font-bold text-orange-600 transition-all shadow-sm active:scale-[0.98] border-2 border-orange-500/80 flex items-center justify-center gap-2"
+                                className="w-full bg-white hover:bg-emerald-50 py-3.5 rounded-xl font-bold text-emerald-600 transition-all shadow-sm active:scale-[0.98] border-2 border-emerald-500/80 flex items-center justify-center gap-2"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 時間を進める（自然回収を実行）
@@ -549,11 +548,11 @@ const App = () => {
                         </div>
                     </div>
 
-                    {/* ====== インスペクター (個別詳細) パネル ====== */}
+                    {/* ====== 個人ログ パネル ====== */}
                     <div className="glass-panel p-7 shadow-lg border border-slate-200/60 bg-white/70">
                         <h2 className="text-xl font-bold mb-5 flex items-center gap-3 text-slate-800">
                             <div className="w-1.5 h-6 bg-gradient-to-b from-teal-400 to-emerald-500 rounded-full shadow-sm"></div>
-                            インスペクター (Detail)
+                            個人ログ (Log)
                         </h2>
 
                         <div className="bg-white p-2 rounded-xl border border-slate-200 mb-5 shadow-sm">
