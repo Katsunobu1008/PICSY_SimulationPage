@@ -260,7 +260,7 @@ const App = () => {
                     <h1 className="text-4xl font-extrabold text-teal-800 tracking-tight drop-shadow-sm mb-1">
                         PICSY Simulator
                     </h1>
-                    <p className="text-slate-500 text-sm font-medium">伝播的投資貨幣PICSY (Propagational Investment Currency)</p>
+                    <p className="text-slate-500 text-sm font-medium">伝播的投資貨幣PICSY (Propagational Investment Currency System)</p>
                 </div>
 
                 {/* 画面上部のグローバル情報表示＆操作エリア */}
