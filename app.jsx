@@ -1,73 +1,88 @@
 const { useState, useEffect, useRef } = React;
 
 const App = () => {
-    // 【状態管理】IDカウンター：新規メンバーに追加する一意の識別子。初期メンバー4人がいるため次は4から開始。
-    const [nextId, setNextId] = useState(4);
+    // 【状態管理】IDカウンター
+    const [nextId, setNextId] = useState(7);
 
-    // 【状態管理】メンバーリスト：現在のネットワーク参加者を管理。
-    // 各メンバーは固有の id, 名前(name), 購買力(P), 貢献度(C) を保持します。
+    // 【状態管理】メンバーリスト
+    // members[0] は Gateway 固定
     const [members, setMembers] = useState([
-        { id: 0, name: "田中", P: 1.0, C: 1.0 },
-        { id: 1, name: "徳永", P: 1.0, C: 1.0 },
-        { id: 2, name: "藤井", P: 1.0, C: 1.0 },
-        { id: 3, name: "山本", P: 1.0, C: 1.0 },
+        { id: 0, name: "為替Gateway", P: 0, C: 1.0 },
+        { id: 1, name: "田中", P: 1.0, C: 1.0 },
+        { id: 2, name: "徳永", P: 1.0, C: 1.0 },
+        { id: 3, name: "藤井", P: 1.0, C: 1.0 },
+        { id: 4, name: "山本", P: 1.0, C: 1.0 },
+        { id: 5, name: "田村", P: 1.0, C: 1.0 },
+        { id: 6, name: "棚橋", P: 1.0, C: 1.0 },
     ]);
 
-    // 【状態管理】評価行列 (Matrix)：各メンバーから他メンバーへの評価/信頼度（PICSYの最も根幹）。
-    // matrix[i][j] は「メンバー j(送信者) から メンバー i(受信者) への評価値」を示します。
-    const [matrix, setMatrix] = useState([
-        [1.0, 1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0],
-    ]);
+    // 【状態管理】SGM為替の状態（法定通貨プール M と不変量 K）
+    const [gateway, setGateway] = useState({ M: 10000, K: 9900 });
 
-    // 【UI状態管理】各種入力・選択状態
-    const [newMemberName, setNewMemberName] = useState("");      // 新規追加メンバーの名前入力値
-    const [focusMemberId, setFocusMemberId] = useState(0);       // 個人ログパネルで表示中のメンバーID
-    const [removeMemberId, setRemoveMemberId] = useState(0);     // 削除プルダウンで選択されているメンバーID
+    // 【状態管理】評価行列 (Matrix)
+    const initialN = 7;
+    const initialMatrix = Array.from({ length: initialN }, (_, i) => {
+        return Array.from({ length: initialN }, (_, j) => {
+            if (j === 0) {
+                // Gateway列 (j=0)
+                return i === 0 ? 0.99 : 0.01 / (initialN - 1);
+            } else {
+                // ユーザー列 (j>0)
+                if (i === j) return 0.99;
+                if (i === 0) return 0.01;
+                return 0.0;
+            }
+        });
+    });
+    const [matrix, setMatrix] = useState(initialMatrix);
 
-    const [txSenderId, setTxSenderId] = useState(0);             // 取引の「送信者」ID
-    const [txReceiverId, setTxReceiverId] = useState(1);         // 取引の「受信者」ID
-    const [txAmount, setTxAmount] = useState(0.1);               // 取引金額（PICSY）のスライダー値
+    // 【UI状態管理】
+    const [newMemberName, setNewMemberName] = useState("");
+    const [focusMemberId, setFocusMemberId] = useState(1);
+    const [removeMemberId, setRemoveMemberId] = useState(1);
 
-    const [recoveryRate, setRecoveryRate] = useState(0.05);      // 自然回収システムにおける減価率 (γ)
+    const [txSenderId, setTxSenderId] = useState(1);
+    const [txReceiverId, setTxReceiverId] = useState(2);
+    const [txAmount, setTxAmount] = useState(0.1);
 
-    // 【ログ管理】システム内で発生したトランザクションを保持する配列
+    const [recoveryRate, setRecoveryRate] = useState(0.05);
+
+    // 為替(SGM)パネル用の状態
+    const [activeTab, setActiveTab] = useState('entry'); // 'entry' or 'exit'
+    const [entryUser, setEntryUser] = useState(1);
+    const [entryJPY, setEntryJPY] = useState(1000);
+    const [exitUser, setExitUser] = useState(1);
+    const [exitAlpha, setExitAlpha] = useState(0.01);
+
+    // 【ログと表示モード】
     const [logs, setLogs] = useState([]);
-
-    // 【モード管理】「生活感モード」トグル。1＝デフォルト表示、10000＝全数値を1万倍にして馴染みやすく表示
     const [multiplier, setMultiplier] = useState(1);
-
-    // 【参照】ログパネルの一番下に自動スクロールするためのDOM参照
     const logsEndRef = useRef(null);
 
-    // 【副作用フック】メンバーの増減時、UIのプルダウン選択値が存在しないメンバーを指さないように自動修正します。
+    // 【副作用フック】選択IDの自動補正
     useEffect(() => {
-        if (members.length > 0) {
-            if (!members.find(m => m.id === parseInt(txSenderId))) setTxSenderId(members[0].id);
-            if (!members.find(m => m.id === parseInt(txReceiverId))) setTxReceiverId(members[members.length > 1 ? 1 : 0].id);
-            if (!members.find(m => m.id === parseInt(focusMemberId))) setFocusMemberId(members[0].id);
-            if (!members.find(m => m.id === parseInt(removeMemberId))) setRemoveMemberId(members[0].id);
+        if (members.length > 1) {
+            if (!members.find(m => m.id === parseInt(txSenderId) && m.id !== 0)) setTxSenderId(members[1].id);
+            if (!members.find(m => m.id === parseInt(txReceiverId) && m.id !== 0)) setTxReceiverId(members[members.length > 2 ? 2 : 1].id);
+            if (!members.find(m => m.id === parseInt(focusMemberId))) setFocusMemberId(members[1].id);
+            if (!members.find(m => m.id === parseInt(removeMemberId) && m.id !== 0)) setRemoveMemberId(members[1].id);
+            if (!members.find(m => m.id === parseInt(entryUser) && m.id !== 0)) setEntryUser(members[1].id);
+            if (!members.find(m => m.id === parseInt(exitUser) && m.id !== 0)) setExitUser(members[1].id);
         }
     }, [members]);
 
-    // 【副作用フック】システムログが追加されるたび、ログパネル内のみ（画面全体ではなく）最下部へスクロールさせます。
     useEffect(() => {
         if (logsEndRef.current) {
             logsEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }, [logs]);
 
-    // 【ユーティリティ】現在時刻付きで新しいログを配列に追加します。
     const addLog = (message) => {
         const now = new Date();
         const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
         setLogs(prev => [...prev, { time: timeStr, msg: message }]);
     };
 
-    // 【ユーティリティ】表示モード(multiplier)に応じて数値をフォーマットします。
-    // 通常モード時は小数点以下(fixedDecimals)を表示し、1万倍モード時は整数としてカンマ区切リで表示します。
     const formatValue = (val, fixedDecimals = 3) => {
         if (multiplier === 10000) {
             return Math.round(val * 10000).toLocaleString();
@@ -75,108 +90,110 @@ const App = () => {
         return val.toFixed(fixedDecimals);
     };
 
-    // 【アクション】新規メンバーをネットワークに追加します。
+    // 【アクション】メンバー追加
     const addMember = () => {
-        if (members.length >= 30) return; // 描画負荷等を考慮した安全策の上限設定
-
-        let name = newMemberName.trim();
-        // 名前が空欄の場合の自動命名ロジック（要求された特定の人名＋以降の連番）
-        if (!name) {
-            if (nextId === 4) {
-                name = "棚橋";
-            } else if (nextId === 5) {
-                name = "田村";
-            } else {
-                name = `メンバー ${nextId + 1}`;
-            }
-        }
-
-        // 追加メンバーの初期パラメーター。全メンバー平等に P=1.0, C=1.0 からスタートします。
-        const newMember = { id: nextId, name: name, P: 1.0, C: 1.0 };
+        if (members.length >= 30) return;
+        let name = newMemberName.trim() || `メンバー ${nextId}`;
+        const newId = nextId;
+        const newMember = { id: newId, name: name, P: 1.0, C: 1.0 };
+        const newN = members.length + 1;
 
         setMembers(prev => [...prev, newMember]);
 
-        // 評価行列(E)に対する初期化。
-        // 全員が新メンバーを 1.0 と評価し、新メンバーも全員を 1.0 と評価するように行・列を拡張します。
         setMatrix(prev => {
-            const nextMatrix = prev.map(row => [...row, 1.0]);           // 既存のすべての行に列を1つ追加
-            nextMatrix.push(new Array(members.length + 1).fill(1.0));    // 新メンバー用の行を新規作成
+            let nextMatrix = prev.map((row, i) => {
+                let newRow = [...row];
+                newRow.push(i === 0 ? 0.01 : 0.0);
+                return newRow;
+            });
+            let newRow = new Array(newN).fill(0);
+            newRow[newN - 1] = 0.99; // 自身の自己評価
+            nextMatrix.push(newRow);
             return nextMatrix;
         });
 
         setNextId(prev => prev + 1);
         setNewMemberName("");
-
         addLog(`参加：${name}さんがネットワークに参加しました。`);
     };
 
-    // 【アクション】ネットワークから既存メンバーを削除（退出）させます。
+    // 【アクション】メンバー削除
     const removeMember = () => {
-        if (members.length <= 1) {
+        const rmId = parseInt(removeMemberId);
+        if (rmId === 0) {
+            alert('Gatewayは削除できません。');
+            return;
+        }
+        if (members.length <= 2) {
             alert('メンバーは少なくとも1人必要です。');
             return;
         }
-        const rmId = parseInt(removeMemberId);
         const memberToRemove = members.find(m => m.id === rmId);
         if (!memberToRemove) return;
-
         const rmIndex = members.findIndex(m => m.id === rmId);
 
         setMembers(prev => prev.filter(m => m.id !== rmId));
 
-        // 該当メンバーに関わる評価行列の行（自分が受ける評価）と列（自分が送った評価）を取り除きます。
         setMatrix(prev => {
-            const nextMatrix = prev.filter((_, i) => i !== rmIndex); // 該当行の削除
-            return nextMatrix.map(row => row.filter((_, j) => j !== rmIndex)); // 残った各行から該当列を削除
-        });
+            const lostEval = prev[rmIndex][0];
+            const nextMatrix = prev.filter((_, i) => i !== rmIndex).map(row => row.filter((_, j) => j !== rmIndex));
 
+            // 削除されたユーザーへ向いていたGatewayからの評価を、残りのユーザーに比例配分
+            let sumRemaining = 0;
+            for (let i = 1; i < nextMatrix.length; i++) sumRemaining += nextMatrix[i][0];
+
+            if (sumRemaining > 0) {
+                for (let i = 1; i < nextMatrix.length; i++) {
+                    nextMatrix[i][0] += lostEval * (nextMatrix[i][0] / sumRemaining);
+                }
+            } else {
+                for (let i = 1; i < nextMatrix.length; i++) {
+                    nextMatrix[i][0] += lostEval / (nextMatrix.length - 1);
+                }
+            }
+            return nextMatrix;
+        });
         addLog(`退出：${memberToRemove.name}さんがネットワークから退出しました。`);
     };
 
-    // 【アルゴリズム PICSYの要】貢献度(C)の再計算・仮想中央銀行（VCB）アルゴリズム（PageRank類似）
+    // 【アクション】貢献度(C)の再計算
     const recalculateC = () => {
         const N = members.length;
         if (N === 0) return;
         let E = matrix;
 
-        // Step 2.1: マルコフ推移確率行列 (W) の生成。列ごとに総和をとり、各評価を割合（確率）に正規化します。
         let W = Array.from({ length: N }, () => new Array(N).fill(0));
         for (let j = 0; j < N; j++) {
             let colSum = 0;
-            for (let k = 0; k < N; k++) colSum += E[k][j]; // M_j から送信されたすべての評価の合計
+            for (let k = 0; k < N; k++) colSum += E[k][j];
             for (let i = 0; i < N; i++) {
-                W[i][j] = colSum === 0 ? 0 : E[i][j] / colSum; // その中で M_i が受け取った割合
+                W[i][j] = colSum === 0 ? 0 : E[i][j] / colSum;
             }
         }
 
-        // Step 2.2: ダンピングファクター（仮想中央銀行への依存）を適用し、不自然なループを回避する修正行列 W_prime を作成します。
-        const alpha = 0.15; // 仮想中央銀行(VCB)と呼ばれる、全体への等配分のためのダンピング係数
+        const alpha = 0.15;
         let W_prime = Array.from({ length: N }, () => new Array(N).fill(0));
         for (let i = 0; i < N; i++) {
             for (let j = 0; j < N; j++) {
-                // 通常の評価遷移(1-alpha) ＋ 全体への平等な底上げ(alpha/N)
                 W_prime[i][j] = (1.0 - alpha) * W[i][j] + (alpha / N);
             }
         }
 
-        // Step 2.3: べき乗法 (Power Iteration) により定常分布である固有ベクトルを求めます。
-        let temp_C = new Array(N).fill(1.0 / N); // 全員が等しい状態からスタート
-        for (let iter = 0; iter < 50; iter++) {       // 50回程度のイテレーションで十分に収束します
+        let temp_C = new Array(N).fill(1.0 / N);
+        for (let iter = 0; iter < 50; iter++) {
             let next_C = new Array(N).fill(0);
-            // 現在の評価の偏りを掛け合わせて、次のステップの貢献度ベクトルを生成
             for (let i = 0; i < N; i++) {
                 for (let j = 0; j < N; j++) {
                     next_C[i] += W_prime[i][j] * temp_C[j];
                 }
             }
-            // 浮動小数点計算の誤差防止のための L1正規化
             let sumNextC = next_C.reduce((a, b) => a + b, 0);
             for (let i = 0; i < N; i++) temp_C[i] = next_C[i] / sumNextC;
         }
 
-        // Step 2.4: 貢献度の合計値が全人口 N に等しくなるようにスケーリングして適用します。
         const newMembers = [...members];
         for (let i = 0; i < N; i++) {
+            // Gatewayも含めて計算し更新する
             newMembers[i] = { ...newMembers[i], C: temp_C[i] * N };
         }
         setMembers(newMembers);
@@ -184,17 +201,21 @@ const App = () => {
         addLog('計算：全員の貢献度(C)を最新の評価行列に基づいて再計算しました。');
     };
 
-    // 【アルゴリズム PICSYの要】手動取引による購買力(P)の移動と、受信者から送信者への「評価」の加算
+    // 【アクション】手動取引
     const executeTransaction = () => {
         const s = parseInt(txSenderId);
         const r = parseInt(txReceiverId);
         const amt = parseFloat(txAmount);
 
+        if (s === 0 || r === 0) {
+            alert('Gatewayは手動取引の対象にできません。為替機能をご利用ください。');
+            return;
+        }
+
         const sIndex = members.findIndex(m => m.id === s);
         const rIndex = members.findIndex(m => m.id === r);
 
         if (sIndex === -1 || rIndex === -1) return;
-
         if (s === r) {
             alert('送信者と受信者は異なる必要があります。');
             return;
@@ -204,15 +225,12 @@ const App = () => {
             return;
         }
 
-        // 送信者(s)のPを減らし、受信者(r)のPを増やします（通常の取引と同じ動き）
         const newMembers = [...members];
         newMembers[sIndex] = { ...newMembers[sIndex], P: newMembers[sIndex].P - amt };
         newMembers[rIndex] = { ...newMembers[rIndex], P: newMembers[rIndex].P + amt };
 
-        // ★ PICSYの特徴的機能：サービスの「受信者」から、対価を支払った「送信者」への「評価（感謝の証）」として加算する。
-        // 列(送信側=サービス受信者)は r, 行(受信側=サービス送信者)は s 。
         const newMatrix = matrix.map(row => [...row]);
-        newMatrix[sIndex][rIndex] += amt;
+        newMatrix[rIndex][sIndex] += amt;
 
         setMembers(newMembers);
         setMatrix(newMatrix);
@@ -222,66 +240,172 @@ const App = () => {
         addLog(`取引：${members[sIndex].name}さんから${members[rIndex].name}さんへ ${displayAmt}${unit} 転送されました。`);
     };
 
-    // 【アルゴリズム PICSYの要】自然回収システム（減価と再分配）
-    // 通貨が滞留しないよう、定期的に全員の財布(P)から一定割合(γ)を回収し、貢献度(C)に比例して戻す仕組み。
+    // 【アクション】自然回収
     const executeRecovery = () => {
         const gamma = parseFloat(recoveryRate);
-        let V = 0; // 回収されたPICSYが集まる仮想的な「プール」
+        let V = 0;
         let newMembers = [...members];
 
-        // Step 4.1: 全員から現在の持っている額(P)に γ を掛けた分を徴収し、プール(V)に集める
-        for (let i = 0; i < newMembers.length; i++) {
+        // i=1 から開始し、Gateway (i=0) は回収・分配の対象外とする
+        for (let i = 1; i < newMembers.length; i++) {
             let collected = newMembers[i].P * gamma;
             V += collected;
             newMembers[i] = { ...newMembers[i], P: newMembers[i].P - collected };
         }
 
-        // Step 4.2: プールされた資金 V を、現在の各自の貢献度(C)のシェアに応じて全員に再分配する
-        let sum_C = newMembers.reduce((acc, m) => acc + m.C, 0);
-        for (let i = 0; i < newMembers.length; i++) {
+        let sum_C = 0;
+        for (let i = 1; i < newMembers.length; i++) sum_C += newMembers[i].C;
+
+        for (let i = 1; i < newMembers.length; i++) {
             let ratio = sum_C > 0 ? newMembers[i].C / sum_C : 0;
             newMembers[i].P += V * ratio;
         }
 
         setMembers(newMembers);
-
-        addLog(`更新：減価率 ${gamma.toFixed(2)} で時間を進め、自然回収を実行しました。`);
+        addLog(`更新：減価率 ${gamma.toFixed(2)} で自然回収を実行し、Gatewayを除く全ユーザー間で再分配しました。`);
     };
 
-    const focusMember = members.find(m => m.id === parseInt(focusMemberId)) || members[0];
+    // 【アクション：SGM】為替 Entry (円 → PICSY)
+    const executeEntry = () => {
+        const amtJPY = parseFloat(entryJPY);
+        if (amtJPY <= 0 || isNaN(amtJPY)) return;
+        const uIndex = members.findIndex(m => m.id === parseInt(entryUser));
+        if (uIndex <= 0) return;
+
+        const M = gateway.M;
+        const K = gateway.K;
+        const E00 = matrix[0][0];
+
+        const M_new = M + amtJPY;
+        const E00_new = K / M_new;
+        const alpha = E00 - E00_new;
+
+        setGateway({ M: M_new, K: K });
+
+        setMatrix(prev => {
+            const nextMatrix = prev.map(row => [...row]);
+            nextMatrix[uIndex][0] += alpha;
+            nextMatrix[0][0] = E00_new;
+            return nextMatrix;
+        });
+
+        setMembers(prev => {
+            const nextMembers = [...prev];
+            nextMembers[uIndex] = { ...nextMembers[uIndex], P: nextMembers[uIndex].P + alpha };
+            return nextMembers;
+        });
+
+        addLog(`為替(入金)：${members[uIndex].name}さんが ¥${Math.floor(amtJPY).toLocaleString()} を投入し、${formatValue(alpha)} PICSYを取得しました。`);
+        setEntryJPY(1000);
+    };
+
+    // 【アクション：SGM】為替 Exit (PICSY → 円)
+    const executeExit = () => {
+        const alpha_out = parseFloat(exitAlpha);
+        if (alpha_out <= 0 || isNaN(alpha_out)) return;
+        const uIndex = members.findIndex(m => m.id === parseInt(exitUser));
+        if (uIndex <= 0) return;
+
+        const user = members[uIndex];
+        if (user.P < alpha_out) {
+            alert('ユーザーの購買力(P)が不足しています。');
+            return;
+        }
+
+        const M = gateway.M;
+        const K = gateway.K;
+        const E00 = matrix[0][0];
+        const E00_new = E00 + alpha_out;
+
+        let nextMatrix = matrix.map(row => [...row]);
+
+        let sumEj0 = 0;
+        for (let i = 1; i < members.length; i++) sumEj0 += nextMatrix[i][0];
+
+        if (sumEj0 <= 0 || sumEj0 < alpha_out) {
+            alert('Gatewayから社会に配られた評価量（流動性）を上回る引出はできません。');
+            return;
+        }
+
+        // ゲートウェイ評価の比例徴収
+        for (let i = 1; i < members.length; i++) {
+            const clawback = alpha_out * (nextMatrix[i][0] / sumEj0);
+            nextMatrix[i][0] -= clawback;
+        }
+        nextMatrix[0][0] = E00_new;
+
+        const M_base = K / E00_new;
+        const delta_M_out = M - M_base;
+
+        const C_target = 1.0;
+        const tau = Math.max(0, 1.0 - Math.pow(user.C / C_target, 2));
+        const delta_M_final = delta_M_out * (1.0 - tau);
+
+        const M_new = M - delta_M_final;
+        const K_new = M_new * E00_new; // 税金分で不変量Kが成長する
+
+        setGateway({ M: M_new, K: K_new });
+        setMatrix(nextMatrix);
+        setMembers(prev => {
+            const nextMembers = [...prev];
+            nextMembers[uIndex] = { ...nextMembers[uIndex], P: nextMembers[uIndex].P - alpha_out };
+            return nextMembers;
+        });
+
+        addLog(`為替(出金)：${user.name}さんが ${formatValue(alpha_out)} PICSYを消費し、¥${Math.floor(delta_M_final).toLocaleString()} を引き出しました。(出口税率: ${(tau * 100).toFixed(1)}%)`);
+    };
+
+    const focusMember = members.find(m => m.id === parseInt(focusMemberId)) || members[1];
     const focusMemberIndex = members.findIndex(m => m.id === (focusMember ? focusMember.id : -1));
+
+    // Gatewayが集めた合計評価を算出（Exitスライダーの最大値制御用）
+    const totalGatewayEval = (() => {
+        let s = 0;
+        for (let i = 1; i < members.length; i++) s += matrix[i][0];
+        return s;
+    })();
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-[95%] xl:max-w-[1400px]">
             {/* ================= ヘッダーセクション ================= */}
             <header className="mb-10 text-center relative flex flex-col md:flex-row justify-between items-center border-b border-slate-200/60 pb-6 gap-4">
                 <div className="flex flex-col items-start">
-                    {/* 信頼感のある深い青緑色の単色タイトル */}
                     <h1 className="text-4xl font-extrabold text-teal-800 tracking-tight drop-shadow-sm mb-1">
                         PICSY Simulator
                     </h1>
-                    <p className="text-slate-500 text-sm font-medium">伝播的投資貨幣PICSY (Propagational Investment Currency System)</p>
+                    <p className="text-slate-500 text-sm font-medium">伝播的投資貨幣PICSY</p>
                 </div>
 
-                {/* 画面上部のグローバル情報表示＆操作エリア */}
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    {/* 人口表示パネル */}
+                <div className="flex flex-col flex-wrap sm:flex-row items-center gap-3">
                     <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-                        <span className="text-slate-500 text-sm font-bold">総人口</span>
-                        <span className="text-blue-600 font-mono font-bold text-lg bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{members.length} <span className="text-sm font-sans">人</span></span>
+                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wide">法定通貨プール (JPY)</span>
+                        <span className="text-amber-600 font-mono font-bold text-lg bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 shadow-inner">¥ {Math.floor(gateway.M).toLocaleString()}</span>
                     </div>
 
-                    {/* 表示モード（基本倍率⇔1万倍）のトグルスイッチ */}
+                    <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 relative group">
+                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wide">システム体力 (Vitality)</span>
+                        <span className="text-indigo-600 font-mono font-bold text-lg bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200 shadow-inner">{gateway.K.toFixed(2)}</span>
+                        {/* Tooltip (下に表示) */}
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 hidden group-hover:block w-64 p-2 bg-slate-800 text-xs text-white rounded shadow-lg z-50 text-center">
+                            この数値が高いほど、大きな金額が動いても為替レートが安定します（法定通貨プール × ゲートウェイ予算）。
+                            <svg className="absolute text-slate-800 h-2 w-full left-0 bottom-full rotate-180" x="0px" y="0px" viewBox="0 0 255 255" xmlSpace="preserve"><polygon className="fill-current" points="0,0 127.5,127.5 255,0" /></svg>
+                        </div>
+                    </div>
+
+                    <div className="bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
+                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wide">総人口</span>
+                        <span className="text-blue-600 font-mono font-bold text-lg bg-blue-50 px-3 py-1 rounded-lg border border-blue-200 shadow-inner">{members.length - 1} <span className="text-sm font-sans">人</span></span>
+                    </div>
+
                     <button
                         onClick={() => setMultiplier(prev => prev === 1 ? 10000 : 1)}
-                        className={`px-5 py-3 rounded-xl font-bold text-sm shadow-md flex items-center gap-2 transition-all ${multiplier === 10000
+                        className={`px-4 py-2.5 rounded-xl font-bold text-xs shadow-md flex items-center gap-2 transition-all ${multiplier === 10000
                             ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white hover:opacity-90'
-                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                             }`}
                     >
-                        {/* トグルアイコン */}
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                        {multiplier === 10000 ? '通常表示 (1x) に戻す' : '生活感モード (10,000倍) に切り替え'}
+                        {multiplier === 10000 ? '通常表示(1x)に戻す' : '生活感モード(1万倍)'}
                     </button>
                 </div>
             </header>
@@ -289,29 +413,24 @@ const App = () => {
             {/* ================= メインレイアウトグリッド ================= */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
 
-                {/* ---------------- 左カラム(全体の幅の2/3を占有)：行列とログ ---------------- */}
+                {/* ---------------- 左カラム：行列とログ ---------------- */}
                 <div className="xl:col-span-2 space-y-8 flex flex-col h-full">
 
-                    {/* ====== 評価行列 (Evaluation Matrix) パネル ====== */}
+                    {/* ====== 評価行列 ====== */}
                     <div className="glass-panel p-6 sm:p-8 flex-none shadow-lg border border-slate-200/60 bg-white/70">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                             <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-3 text-slate-800">
-                                {/* タイトル左の装飾バー */}
                                 <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full shadow-sm"></div>
                                 評価行列 (Evaluation Matrix)
                             </h2>
-                            {/* 「貢献度再計算」はシステムにおいて最重要アクションのため、視線を惹きつける青ベースのグラデーションボタンを配置 */}
                             <button onClick={recalculateC} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 w-full md:w-auto px-6 py-2.5 rounded-xl font-bold text-sm shadow-md flex justify-center items-center gap-2 text-white transition-all transform active:scale-[0.98]">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 貢献度(C)を再計算する
                             </button>
                         </div>
 
-                        {/* ================= メンバー追加/削除コントロール ================= */}
-                        {/* ユーザー利便性のため、長い行列テーブルをスクロールする前に操作できるようにテーブル上部へ配置 */}
+                        {/* メンバー追加/削除コントロール */}
                         <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 pb-6 border-b border-slate-200/80">
-
-                            {/* メンバー追加枠 */}
                             <div className="bg-slate-50/90 p-4 rounded-xl border border-slate-200/80 shadow-sm flex flex-col gap-2">
                                 <h3 className="text-xs font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-wide">
                                     <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
@@ -334,8 +453,6 @@ const App = () => {
                                     </button>
                                 </div>
                             </div>
-
-                            {/* メンバー削除枠 */}
                             <div className="bg-slate-50/90 p-4 rounded-xl border border-slate-200/80 shadow-sm flex flex-col gap-2">
                                 <h3 className="text-xs font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-wide">
                                     <svg className="w-3.5 h-3.5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path></svg>
@@ -347,11 +464,11 @@ const App = () => {
                                         onChange={e => setRemoveMemberId(e.target.value)}
                                         className="w-full sm:flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 focus:outline-none appearance-none font-medium text-slate-700 shadow-inner"
                                     >
-                                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                        {members.filter(m => m.id !== 0).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                     <button
                                         onClick={removeMember}
-                                        disabled={members.length <= 1}
+                                        disabled={members.length <= 2}
                                         className="w-full sm:w-auto bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-sm flex justify-center items-center gap-1.5"
                                     >
                                         削除
@@ -360,45 +477,45 @@ const App = () => {
                             </div>
                         </div>
 
-                        {/* ================= マトリックス（評価行列）テーブル ================= */}
-                        {/* 画面幅が小さい時のためにスクロール可能にし、ヘッダー行と左の固定列を設定 */}
+                        {/* マトリックス（評価行列）テーブル */}
                         <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm max-h-[460px] custom-scrollbar">
                             <table className="w-full text-sm text-left relative">
                                 <thead className="text-xs text-slate-500 uppercase bg-slate-100/95 sticky top-0 z-20 border-b border-slate-200/80 backdrop-blur-md">
                                     <tr>
-                                        {/* 左端の交差する固定セル：見栄えのため空白として扱う */}
                                         <th className="px-3 md:px-5 py-3 font-bold text-slate-700 sticky left-0 bg-slate-100/95 z-30">&nbsp;</th>
-
-                                        {/* 購買力・貢献度ヘッダ */}
                                         <th className="px-3 md:px-5 py-3 font-bold text-emerald-600 whitespace-nowrap"><div className="flex flex-col"><span>購買力</span><span className="text-[10px] text-emerald-400">Power (P)</span></div></th>
                                         <th className="px-3 md:px-5 py-3 font-bold text-indigo-600 whitespace-nowrap"><div className="flex flex-col"><span>貢献度</span><span className="text-[10px] text-indigo-400">Contrib (C)</span></div></th>
 
-                                        {/* 各メンバーの「送信側」列ヘッダ。認知ノイズを抑えるため、極力シンプルな名前のみ、かつ文字色を薄く表示する。 */}
-                                        {members.map(m => (
-                                            <th key={m.id} className="px-3 py-3 text-center font-bold text-xs text-slate-500 whitespace-nowrap" title={`送信者: ${m.name}`}>{m.name}</th>
+                                        {members.map((m, idx) => (
+                                            <th key={m.id} className={`px-3 py-3 text-center font-[500] text-[11px] whitespace-nowrap ${idx === 0 ? 'bg-slate-50 text-slate-400 border-l border-slate-200' : 'text-slate-500 font-bold'}`} title={`送信者: ${m.name}`}>{m.name}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {members.map((receiver, i) => (
-                                        <tr key={receiver.id} className="hover:bg-blue-50/40 transition-colors">
-                                            {/* 左端（受信側）の固定氏名セル */}
-                                            <td className="px-3 md:px-5 py-2.5 font-bold text-slate-700 whitespace-nowrap sticky left-0 bg-white/95 z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">{receiver.name}</td>
+                                        <tr key={receiver.id} className={`transition-colors ${i === 0 ? 'bg-slate-50 text-slate-500 hover:bg-slate-100' : 'hover:bg-blue-50/40'}`}>
+                                            <td className={`px-3 md:px-5 py-2.5 whitespace-nowrap sticky left-0 z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${i === 0 ? 'bg-slate-50 text-slate-400 font-[500]' : 'bg-white/95 text-slate-700 font-bold'}`}>{receiver.name}</td>
+                                            <td className={`px-3 md:px-5 py-2.5 font-mono tracking-tight whitespace-nowrap text-right pr-4 ${i === 0 ? 'text-slate-400 font-[500]' : 'text-emerald-700 bg-emerald-50/40 font-bold'}`}>{i === 0 ? '-' : formatValue(receiver.P)}</td>
+                                            <td className={`px-3 md:px-5 py-2.5 font-mono tracking-tight whitespace-nowrap text-right pr-4 ${i === 0 ? 'text-slate-400 bg-slate-100/40 font-[500]' : 'text-indigo-700 bg-indigo-50/40 font-bold'}`}>{formatValue(receiver.C)}</td>
 
-                                            {/* 対象メンバーの現在保有している P 購買力。緑系統でハイライト */}
-                                            <td className="px-3 md:px-5 py-2.5 text-emerald-700 font-mono font-bold tracking-tight bg-emerald-50/40 whitespace-nowrap text-right pr-4">{formatValue(receiver.P)}</td>
-                                            {/* 対象メンバーのシステムによって計算された C 貢献度。インディゴ系統でハイライト */}
-                                            <td className="px-3 md:px-5 py-2.5 text-indigo-700 font-mono font-bold tracking-tight bg-indigo-50/40 whitespace-nowrap text-right pr-4">{formatValue(receiver.C)}</td>
+                                            {members.map((sender, j) => {
+                                                const isGatewayCell = i === 0 || j === 0;
+                                                const isMatrixZeroZero = i === 0 && j === 0;
+                                                const isSelf = i === j && !isGatewayCell;
 
-                                            {/* ここから右が「相手からの評価」数値セル */}
-                                            {members.map((sender, j) => (
-                                                <td key={`${i}-${j}`} className={`px-3 py-2.5 text-center matrix-cell font-mono text-sm tracking-tight ${i === j
-                                                    ? 'bg-indigo-100/40 text-indigo-900 font-semibold' // 自分自身（対角要素）は特別に色付け
-                                                    : 'text-slate-600'
-                                                    }`}>
-                                                    {formatValue(matrix[i][j])}
-                                                </td>
-                                            ))}
+                                                let cellClasses = 'px-3 py-2.5 text-center matrix-cell font-mono text-xs tracking-tight ';
+                                                if (isMatrixZeroZero) cellClasses += 'bg-slate-100 text-slate-400 font-[500] border-l border-slate-200';
+                                                else if (j === 0) cellClasses += 'bg-slate-50 text-slate-400 font-[500] border-l border-slate-200';
+                                                else if (i === 0) cellClasses += 'bg-slate-50 text-slate-400 font-[500] border-b border-slate-200';
+                                                else if (isSelf) cellClasses += 'bg-indigo-100/40 text-indigo-900 font-semibold';
+                                                else cellClasses += 'text-slate-600';
+
+                                                return (
+                                                    <td key={`${i}-${j}`} className={cellClasses}>
+                                                        {formatValue(matrix[i][j])}
+                                                    </td>
+                                                );
+                                            })}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -406,13 +523,12 @@ const App = () => {
                         </div>
                     </div>
 
-                    {/* ====== システムログ用パネル ====== */}
+                    {/* ====== システムログ ====== */}
                     <div className="glass-panel p-6 sm:p-8 flex-1 flex flex-col min-h-[250px] shadow-lg border border-slate-200/60 bg-white/70">
                         <h2 className="text-xl font-bold flex items-center gap-3 text-slate-800 mb-4 border-b border-slate-200/60 pb-3">
                             <div className="w-1.5 h-6 bg-gradient-to-b from-slate-400 to-slate-600 rounded-full"></div>
                             システムログ (System Logs)
                         </h2>
-                        {/* ログが溜まるインナーウィンドウ。このウィンドウ内部だけがスクロールする。 */}
                         <div className="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-4 overflow-y-auto custom-scrollbar shadow-inner text-slate-300 text-sm font-mono h-[200px]">
                             <div className="space-y-1">
                                 {logs.length === 0 ? (
@@ -420,19 +536,17 @@ const App = () => {
                                 ) : (
                                     logs.map((log, idx) => (
                                         <div key={idx} className="flex gap-3 px-2 py-1.5 hover:bg-slate-800/80 rounded transition-colors break-words items-start">
-                                            {/* 時刻表示 */}
                                             <span className="text-slate-500 whitespace-nowrap shrink-0">[{log.time}]</span>
-                                            {/* メッセージ内容（先頭の種別文字列で文字色を分岐表示） */}
-                                            <span className={`${log.msg.startsWith('取引') ? 'text-emerald-400 font-bold' :
-                                                log.msg.startsWith('計算') ? 'text-blue-300' :
-                                                    log.msg.startsWith('更新') ? 'text-amber-300' :
-                                                        log.msg.startsWith('退出') ? 'text-rose-400' :
-                                                            log.msg.startsWith('参加') ? 'text-fuchsia-300' : 'text-slate-300'
+                                            <span className={`${log.msg.startsWith('為替') ? 'text-amber-400 font-bold' :
+                                                log.msg.startsWith('取引') ? 'text-emerald-400 font-bold' :
+                                                    log.msg.startsWith('計算') ? 'text-blue-300' :
+                                                        log.msg.startsWith('更新') ? 'text-orange-300' :
+                                                            log.msg.startsWith('退出') ? 'text-rose-400' :
+                                                                log.msg.startsWith('参加') ? 'text-fuchsia-300' : 'text-slate-300'
                                                 }`}>{log.msg}</span>
                                         </div>
                                     ))
                                 )}
-                                {/* オートスクロールのアンカー */}
                                 <div ref={logsEndRef} />
                             </div>
                         </div>
@@ -440,59 +554,50 @@ const App = () => {
 
                 </div>
 
-                {/* ---------------- 右カラム(全体の幅の1/3を占有)：操作・詳細パネル ---------------- */}
+                {/* ---------------- 右カラム：操作・詳細パネル ---------------- */}
                 <div className="space-y-6">
 
-                    {/* ====== 取引 (Transaction) パネル ====== */}
+                    {/* ====== 取引パネル ====== */}
                     <div className="glass-panel p-7 shadow-lg border border-slate-200/60 bg-white/70">
                         <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
-                            {/* 「取引」のアクションカラーであるマゼンタ系のグラデーション */}
                             <div className="w-1.5 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full shadow-sm"></div>
                             手動取引 (Manual Transaction)
                         </h2>
 
                         <div className="space-y-3">
-                            {/* 送信者（お金を払う側＝他者を評価する側）の選択 */}
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative z-10">
                                 <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">送信者 (Sender)</label>
                                 <select
                                     value={txSenderId}
                                     onChange={e => setTxSenderId(e.target.value)}
-                                    // 送信者はパープル系の下地
                                     className="w-full bg-purple-50/50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 focus:outline-none appearance-none font-bold text-slate-700"
                                 >
-                                    {members.map(m => <option key={m.id} value={m.id}>{m.name} (残高: {formatValue(m.P)})</option>)}
+                                    {members.filter(m => m.id !== 0).map(m => <option key={m.id} value={m.id}>{m.name} (残高: {formatValue(m.P)})</option>)}
                                 </select>
                             </div>
 
-                            {/* 資金（価値）の流れを表す下向き矢印。 */}
-                            {/* [デザイン改善] アイコンのサイズを控えめにし、上下均等の余白 `my-2` を確保することで、視線が滑らかに下へ誘導されるように設計しています。 */}
                             <div className="flex justify-center my-2 relative z-20">
                                 <div className="bg-white p-1.5 rounded-full shadow-sm border border-slate-200 text-slate-400">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
                                 </div>
                             </div>
 
-                            {/* 受信者（サービス提供側＝他者から評価される側）の選択 */}
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative z-10">
                                 <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">受信者 (Receiver)</label>
                                 <select
                                     value={txReceiverId}
                                     onChange={e => setTxReceiverId(e.target.value)}
-                                    // 受信者はピンク系の下地
                                     className="w-full bg-pink-50/50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-pink-500/30 focus:border-pink-500 focus:outline-none appearance-none font-bold text-slate-700"
                                 >
-                                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    {members.filter(m => m.id !== 0).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
                             </div>
 
-                            {/* 取引金額(PICSY)を決めるスライダー */}
                             <div className="px-2 pt-4 pb-2">
                                 <div className="flex justify-between text-sm font-bold mb-3">
                                     <label className="text-slate-600">金額 (Amount)</label>
                                     <span className="text-purple-700 font-mono bg-purple-100 px-3 py-1 rounded shadow-sm border border-purple-200">{formatValue(parseFloat(txAmount), 2)}</span>
                                 </div>
-                                {/* 金額は一度に大量移動しすぎないよう 0.00 〜 1.00 で制限。 */}
                                 <input
                                     type="range" min="0" max="1" step="0.01" value={txAmount}
                                     onChange={e => setTxAmount(e.target.value)}
@@ -506,7 +611,6 @@ const App = () => {
 
                             <button
                                 onClick={executeTransaction}
-                                // 信頼感と押下感を意識したソリッドなブルーの単色ボタン
                                 className="w-full bg-blue-600 hover:bg-blue-500 py-3.5 rounded-xl font-bold text-white transition-all shadow-md mt-2 active:scale-[0.98] border border-blue-700/50"
                             >
                                 評価を転送して取引を確定する
@@ -514,7 +618,7 @@ const App = () => {
                         </div>
                     </div>
 
-                    {/* ====== 自然回収 (Recovery) パネル ====== */}
+                    {/* ====== 自然回収パネル ====== */}
                     <div className="glass-panel p-7 shadow-lg border border-slate-200/60 bg-white/70">
                         <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
                             <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-sm"></div>
@@ -533,11 +637,6 @@ const App = () => {
                                     className="w-full accent-emerald-500 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                                 />
                             </div>
-
-                            {/* [デザイン改善] 
-                                同一画面上において、システム全体の色数を減らすためメンバー追加ボタンと同じエメラルド系（緑）に統一。
-                                中を白抜き（背景白、枠線と文字が緑）のスタイルを維持し、直感的に操作しやすいデザインへ。
-                            */}
                             <button
                                 onClick={executeRecovery}
                                 className="w-full bg-white hover:bg-emerald-50 py-3.5 rounded-xl font-bold text-emerald-600 transition-all shadow-sm active:scale-[0.98] border-2 border-emerald-500/80 flex items-center justify-center gap-2"
@@ -546,6 +645,133 @@ const App = () => {
                                 時間を進める（自然回収を実行）
                             </button>
                         </div>
+                    </div>
+
+                    {/* ====== 為替 (Exchange) パネル ====== */}
+                    <div className="glass-panel p-7 shadow-lg border border-slate-200/60 bg-white/70">
+                        <h2 className="text-xl font-bold mb-6 flex items-center gap-3 text-slate-800">
+                            <div className="w-1.5 h-6 bg-gradient-to-b from-amber-400 to-orange-500 rounded-full shadow-sm"></div>
+                            為替 (Exchange)
+                        </h2>
+
+                        <div className="flex border-b border-slate-200 mb-5">
+                            <button
+                                onClick={() => setActiveTab('entry')}
+                                className={`flex-1 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'entry' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                            >
+                                Entry (円 → P)
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('exit')}
+                                className={`flex-1 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'exit' ? 'border-amber-500 text-amber-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                            >
+                                Exit (P → 円)
+                            </button>
+                        </div>
+
+                        {activeTab === 'entry' ? (
+                            <div className="space-y-4">
+                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative z-10">
+                                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">対象ユーザー</label>
+                                    <select
+                                        value={entryUser}
+                                        onChange={e => setEntryUser(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:outline-none appearance-none font-bold text-slate-700"
+                                    >
+                                        {members.filter(m => m.id !== 0).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative z-10">
+                                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">投入する日本円 (JPY)</label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-slate-500">¥</span>
+                                        <input
+                                            type="number" min="1" step="1" value={entryJPY}
+                                            onChange={e => setEntryJPY(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:outline-none font-bold text-slate-700"
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={executeEntry}
+                                    className="w-full bg-amber-500 hover:bg-amber-400 py-3.5 rounded-xl font-bold text-white transition-all shadow-md mt-2 active:scale-[0.98] border border-amber-600/50 flex justify-center items-center gap-2"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                                    PICSYを取得する
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative z-10">
+                                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">対象ユーザー</label>
+                                    <select
+                                        value={exitUser}
+                                        onChange={e => setExitUser(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:outline-none appearance-none font-bold text-slate-700"
+                                    >
+                                        {members.filter(m => m.id !== 0).map(m => <option key={m.id} value={m.id}>{m.name} (残高: {formatValue(m.P)})</option>)}
+                                    </select>
+                                </div>
+                                <div className="px-2 pt-2 pb-2">
+                                    <div className="flex justify-between text-sm font-bold mb-3">
+                                        <label className="text-slate-600">消費額 (α out)</label>
+                                        <span className="text-amber-700 font-mono bg-amber-100 px-3 py-1 rounded shadow-sm border border-amber-200">{formatValue(parseFloat(exitAlpha), 3)}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max={Math.min(members.find(m => m.id === parseInt(exitUser))?.P || 0, totalGatewayEval)}
+                                        step="0.001"
+                                        value={exitAlpha}
+                                        onChange={e => setExitAlpha(e.target.value)}
+                                        className="w-full accent-amber-500 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                    />
+                                    <div className="flex justify-between text-xs text-slate-400 mt-2 font-mono">
+                                        <span>{formatValue(0)}</span>
+                                        <span>Max</span>
+                                    </div>
+                                </div>
+
+                                {/* プレビュー表示 */}
+                                {(() => {
+                                    const activeExitMember = members.find(m => m.id === parseInt(exitUser));
+                                    if (!activeExitMember) return null;
+                                    const previewAlphaOut = parseFloat(exitAlpha) || 0;
+                                    const E00_new = matrix[0][0] + previewAlphaOut;
+                                    const M_base = gateway.K / E00_new;
+                                    const delta_M_out = gateway.M - M_base;
+                                    const tau = Math.max(0, 1.0 - Math.pow(activeExitMember.C / 1.0, 2));
+                                    const previewMFinal = delta_M_out > 0 ? delta_M_out * (1.0 - tau) : 0;
+
+                                    return (
+                                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-sm shadow-inner">
+                                            <div className="flex justify-between mb-2">
+                                                <span className="text-slate-500 font-bold">現在の貢献度 (C)</span>
+                                                <span className="text-indigo-600 font-mono font-bold text-base">{formatValue(activeExitMember.C)}</span>
+                                            </div>
+                                            <div className="flex justify-between mb-3 border-b border-slate-200 pb-3">
+                                                <span className="text-slate-500 font-bold flex items-center gap-1">
+                                                    推定出口税率 <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                                </span>
+                                                <span className={`${tau > 0 ? 'text-rose-500' : 'text-emerald-500'} font-mono font-bold text-base`}>{(tau * 100).toFixed(1)} %</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-700 font-bold">最終受取円</span>
+                                                <span className="text-amber-600 font-mono font-extrabold text-xl">¥ {Math.floor(previewMFinal).toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                <button
+                                    onClick={executeExit}
+                                    className="w-full bg-slate-800 hover:bg-slate-700 py-3.5 rounded-xl font-bold text-amber-400 transition-all shadow-md mt-2 active:scale-[0.98] border border-slate-600 flex justify-center items-center gap-2"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                                    PICSYを消費して日本円を出金
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* ====== 個人ログ パネル ====== */}
@@ -557,15 +783,14 @@ const App = () => {
 
                         <div className="bg-white p-2 rounded-xl border border-slate-200 mb-5 shadow-sm">
                             <select
-                                value={focusMember ? focusMember.id : ""}
+                                value={focusMemberId}
                                 onChange={e => setFocusMemberId(e.target.value)}
                                 className="w-full bg-transparent border-0 px-3 py-2 font-bold text-slate-700 appearance-none focus:outline-none"
                             >
-                                {members.map(m => <option key={m.id} value={m.id}>対象: {m.name}</option>)}
+                                {members.filter(m => m.id !== 0).map(m => <option key={m.id} value={m.id}>対象: {m.name}</option>)}
                             </select>
                         </div>
 
-                        {/* 対象メンバーが存在し、正常にインデックスが引けた場合のみ表示 */}
                         {focusMember && focusMemberIndex !== -1 && (
                             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-inner">
                                 <div className="grid grid-cols-2 gap-4 border-b border-slate-200 pb-5 mb-5">
@@ -584,17 +809,12 @@ const App = () => {
                                     他者からの評価（取引あり）
                                 </h3>
 
-                                {/* 該メンバーに対して、誰がどれだけ評価を送金している（取引した）かの一覧 */}
                                 <ul className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
                                     {members.map((sender, sIndex) => {
-                                        // 自身からの評価ベクトル（対角成分）は表示から除外
                                         if (sender.id === focusMember.id) return null;
+                                        if (sender.id === 0) return null; // Gatewayからの評価は除く
 
-                                        // 相手（sender）から自身（focusMember=受信側）に対しての評価値
-                                        // matrix は [受信者(receiver)][送信者(sender)] の順で格納されています
                                         const rawVal = matrix[focusMemberIndex][sIndex];
-
-                                        // 初期値(1.0)以下のまま場合は取引が発生していないため、リスト表示をスキップ
                                         if (rawVal <= 1.0) return null;
 
                                         return (
@@ -602,15 +822,13 @@ const App = () => {
                                                 <span className="text-slate-700 font-bold">{sender.name}</span>
                                                 <div className="flex flex-col items-end">
                                                     <span className="text-cyan-700 font-mono font-bold">{formatValue(rawVal)}</span>
-                                                    <span className="text-[10px] text-slate-400">累計送金額（＋評価値）</span>
                                                 </div>
                                             </li>
                                         );
                                     })}
 
-                                    {/* 全員をチェックしても、評価値が初期値1.0を超える相手が一人もいなかった時のフォールバック */}
-                                    {members.filter((s, i) => s.id !== focusMember.id && matrix[focusMemberIndex][i] > 1.0).length === 0 && (
-                                        <div className="text-center text-slate-400 text-xs py-4">まだ誰からも取引を受けていません</div>
+                                    {members.filter((s, i) => s.id !== focusMember.id && s.id !== 0 && matrix[focusMemberIndex][i] > 1.0).length === 0 && (
+                                        <div className="text-center text-slate-400 text-xs py-4">まだ誰からも手動取引を受けていません</div>
                                     )}
                                 </ul>
                             </div>
